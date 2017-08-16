@@ -55,15 +55,14 @@ public class TiGooshModule extends KrollModule {
 	private KrollFunction errorCallback = null;
 	private KrollFunction messageCallback = null;
 
-	public Boolean remoteNotificationsEnabled = false;
-
 	public TiGooshModule() {
 		super();
 		module = this;
 	}
 
 	public static TiGooshModule getModule() {
-		return module;
+		if (module != null) return module;
+		else return new TiGooshModule();
 	}
 
 	public void parseBootIntent() {
@@ -71,17 +70,14 @@ public class TiGooshModule extends KrollModule {
 			Intent intent = TiApplication.getAppRootOrCurrentActivity().getIntent();
 			String notification = "";
 
-			Bundle extras = intent.getExtras();
-			if (extras != null) {
-				notification = extras.getString("data");
-				Log.d(LCAT, "Extra data: " + notification);
-			}
-
 			if (intent.getExtras() != null) {
 				for (String key : intent.getExtras().keySet()) {
-					Object value = intent.getExtras().get(key);
-					Log.d(LCAT, "Key: " + key + " Value: " + value);
-				}
+					if (key == "data") {
+						notification = intent.getExtras().getString("data");
+					}
+	                Object value = intent.getExtras().get(key);
+	                Log.d(LCAT, "Key: " + key + " Value: " + value);
+	            }
 			}
 
 			if (!notification.isEmpty()) {
@@ -178,7 +174,7 @@ public class TiGooshModule extends KrollModule {
 	@Kroll.method
 	@Kroll.getProperty
 	public Boolean isRemoteNotificationsEnabled() {
-		return remoteNotificationsEnabled;
+		return (getRemoteDeviceUUID() != null);
 	}
 
 	@Kroll.method
@@ -211,8 +207,6 @@ public class TiGooshModule extends KrollModule {
 	// Public
 
 	public void sendSuccess(String token) {
-		remoteNotificationsEnabled = true;
-
 		if (successCallback == null) {
 			Log.e(LCAT, "sendSuccess invoked but no successCallback defined");
 			return;
@@ -227,8 +221,6 @@ public class TiGooshModule extends KrollModule {
 	}
 
 	public void sendError(Exception ex) {
-		remoteNotificationsEnabled = false;
-
 		if (errorCallback == null) {
 			Log.e(LCAT, "sendError invoked but no errorCallback defined");
 			return;
