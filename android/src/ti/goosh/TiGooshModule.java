@@ -39,6 +39,7 @@ import com.google.android.gms.gcm.GoogleCloudMessaging;
 import com.google.android.gms.iid.InstanceID;
 
 import android.app.NotificationManager;
+import android.support.v4.app.NotificationManagerCompat;
 
 @Kroll.module(name="TiGoosh", id="ti.goosh")
 public class TiGooshModule extends KrollModule {
@@ -55,7 +56,12 @@ public class TiGooshModule extends KrollModule {
 	private KrollFunction errorCallback = null;
 	private KrollFunction messageCallback = null;
 
-	public Boolean remoteNotificationsEnabled = false;
+	/* Callbacks for topics */
+	private KrollFunction successUnsubTopicCallback = null;
+	private KrollFunction successTopicCallback = null;
+	private KrollFunction errorSubTopicCallback = null;
+	private KrollFunction errorTopicCallback = null;
+	private KrollFunction topicCallback = null;
 
 	public TiGooshModule() {
 		super();
@@ -63,25 +69,22 @@ public class TiGooshModule extends KrollModule {
 	}
 
 	public static TiGooshModule getModule() {
-		return module;
+		if (module != null) return module;
+		else return new TiGooshModule();
 	}
 
 	public void parseBootIntent() {
 		try {
 			Intent intent = TiApplication.getAppRootOrCurrentActivity().getIntent();
-
-			if (intent.hasExtra(INTENT_EXTRA)) {
-
-				String notification = intent.getStringExtra(INTENT_EXTRA);
-
-				intent.removeExtra(INTENT_EXTRA);
+			String notification = intent.getStringExtra(INTENT_EXTRA);
+			if (notification != null) {
 				sendMessage(notification, true);
-
+				intent.removeExtra(INTENT_EXTRA);
 			} else {
-				Log.d(LCAT, "No notification in Intent");
+				Log.d(LCAT, "Empty notification in Intent");
 			}
 		} catch (Exception ex) {
-			Log.e(LCAT, ex.getMessage());
+			Log.e(LCAT, "parseBootIntent" + ex);
 		}
 	}
 
@@ -150,6 +153,15 @@ public class TiGooshModule extends KrollModule {
 		}.execute();
 	}
 
+	@Kroll.method
+	public boolean areNotificationsEnabled() {
+		try{
+			return NotificationManagerCompat.from(TiApplication.getInstance().getApplicationContext()).areNotificationsEnabled();
+		}catch(Exception ex){
+			return false;
+		}
+		
+	}
 
 	@Kroll.method
 	public void cancelAll() {
@@ -169,7 +181,7 @@ public class TiGooshModule extends KrollModule {
 	@Kroll.method
 	@Kroll.getProperty
 	public Boolean isRemoteNotificationsEnabled() {
-		return remoteNotificationsEnabled;
+		return (getRemoteDeviceUUID() != null);
 	}
 
 	@Kroll.method
@@ -202,8 +214,6 @@ public class TiGooshModule extends KrollModule {
 	// Public
 
 	public void sendSuccess(String token) {
-		remoteNotificationsEnabled = true;
-
 		if (successCallback == null) {
 			Log.e(LCAT, "sendSuccess invoked but no successCallback defined");
 			return;
@@ -218,8 +228,6 @@ public class TiGooshModule extends KrollModule {
 	}
 
 	public void sendError(Exception ex) {
-		remoteNotificationsEnabled = false;
-
 		if (errorCallback == null) {
 			Log.e(LCAT, "sendError invoked but no errorCallback defined");
 			return;
@@ -229,6 +237,10 @@ public class TiGooshModule extends KrollModule {
 		e.put("error", ex.getMessage());
 
 		errorCallback.callAsync(getKrollObject(), e);
+	}
+
+	public boolean hasMessageCallback() {
+		return messageCallback != null;
 	}
 
 	public void sendMessage(String data, Boolean inBackground) {
@@ -244,5 +256,91 @@ public class TiGooshModule extends KrollModule {
 		messageCallback.callAsync(getKrollObject(), e);
 	}
 
-}
+	@Kroll.method
+	public void subscribe(final HashMap options) {
+		final String topic  = (String) options.get("topic");
 
+		if (options.get("success") != null) {
+			successTopicCallback = (KrollFunction) options.get("success");
+		}
+		if (options.get("error") != null) {
+			errorTopicCallback = (KrollFunction) options.get("error");
+		}
+
+		if (topic == null || !topic.startsWith("/topics/")) {
+			Log.e(LCAT, "No or invalid topic specified, should start with /topics/");
+			return;
+		}
+
+		new AsyncTask<Void, Void, Void>() {
+			@Override
+			protected Void doInBackground(Void... params) {
+				try {
+					String token = getRemoteDeviceUUID();
+					GcmPubSub.getInstance(TiApplication.getInstance()).subscribe(token, topic, null);
+					if (successTopicCallback != null) {
+						// send success callback
+						HashMap<String, Object> data = new HashMap<String, Object>();
+						data.put("success", true);
+						data.put("topic", topic);
+						successTopicCallback.callAsync(getKrollObject(), data);
+					}
+				} catch (Exception ex) {
+					// error
+					Log.e(LCAT, "Error " + ex.toString());
+					if (errorTopicCallback != null) {
+						// send error callback
+						HashMap<String, Object> data = new HashMap<String, Object>();
+						data.put("success", false);
+						data.put("topic", topic);
+						data.put("error", ex.toString());
+						errorTopicCallback.callAsync(getKrollObject(), data);
+					}
+				}
+				return null;
+			}
+		}.execute();
+	}
+
+	@Kroll.method
+	public void unsubscribe(final HashMap options) {
+		final String topic  = (String) options.get("topic");
+		successUnsubTopicCallback = (KrollFunction) options.get("success");
+		errorSubTopicCallback = (KrollFunction) options.get("error");
+
+		if (topic == null || !topic.startsWith("/topics/")) {
+			Log.e(LCAT, "No or invalid topic specified, should start with /topics/");
+			return;
+		}
+
+		new AsyncTask<Void, Void, Void>() {
+			@Override
+			protected Void doInBackground(Void... params) {
+				try {
+					String token = getRemoteDeviceUUID();
+					if (token != null) {
+						GcmPubSub.getInstance(TiApplication.getInstance()).unsubscribe(token, topic);
+						if (successUnsubTopicCallback != null) {
+							HashMap<String, Object> data = new HashMap<String, Object>();
+							data.put("success", true);
+							data.put("topic", topic);
+							successUnsubTopicCallback.callAsync(getKrollObject(), data);
+						}
+					} else {
+						HashMap<String, Object> data = new HashMap<String, Object>();
+						data.put("error", true);
+						data.put("topic", topic);
+						errorSubTopicCallback.callAsync(getKrollObject(), data);
+						Log.e(LCAT, "Cannot unsubscribe from topic " + topic);
+					}
+				} catch (Exception ex) {
+					HashMap<String, Object> data = new HashMap<String, Object>();
+					data.put("error", ex.toString());
+					data.put("topic", topic);
+					errorSubTopicCallback.callAsync(getKrollObject(), data);
+				}
+				return null;
+			}
+		}.execute();
+	}
+}

@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import org.appcelerator.titanium.TiApplication;
+import org.appcelerator.kroll.KrollRuntime;
 
 public class PushHandlerActivity extends Activity {
 
@@ -16,29 +17,32 @@ public class PushHandlerActivity extends Activity {
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
-		Log.d(LCAT, "started");
-		super.onCreate(savedInstanceState);
+		try {
+			Log.d(LCAT, "started");
+			super.onCreate(savedInstanceState);
+			finish();
 
-		TiGooshModule module = TiGooshModule.getModule();
-		Context context = getApplicationContext();
-		String notification = getIntent().getStringExtra(TiGooshModule.INTENT_EXTRA);
+			TiGooshModule module = TiGooshModule.getModule();
+			Context context = getApplicationContext();
+			String notification = getIntent().getStringExtra(TiGooshModule.INTENT_EXTRA);
 
-		Intent launcherIntent;
+			Intent launcherIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+			launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+			launcherIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-		if (TiApplication.getAppRootOrCurrentActivity() == null) {
-			launcherIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-			launcherIntent.setFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-		} else {
-			launcherIntent = TiApplication.getAppRootOrCurrentActivity().getIntent();
-			if (module != null) {
-				TiGooshModule.getModule().sendMessage(notification, true);
+			if (module.hasMessageCallback() && KrollRuntime.getInstance().getRuntimeState() != KrollRuntime.State.DISPOSED) {
+				module.sendMessage(notification, true);
+			} else {
+				launcherIntent.putExtra(TiGooshModule.INTENT_EXTRA, notification);
 			}
+
+			startActivity(launcherIntent);
+
+		} catch (Exception e) {
+			// noop
+		} finally {
+			finish();
 		}
-
-		launcherIntent.putExtra(TiGooshModule.INTENT_EXTRA, notification);
-		startActivity(launcherIntent);
-
-		finish();
 	}
 
 	@Override protected void onResume() {

@@ -2,6 +2,7 @@ package ti.goosh;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.io.IOException;
 import java.net.URL;
 import java.net.HttpURLConnection;
@@ -94,7 +95,8 @@ public class IntentService extends GcmListenerService {
 		String alert = bundle.getString("data", "");
 
 		// get the `data` or fallback for `custom` (OneSignal)
-		String jsonData = bundle.getString("data", bundle.getString("custom"));
+
+		String jsonData = bundle.getString("data", bundle.getString("custom", getCountlyId(bundle)));
 		JsonObject data = null;
 
 		if (jsonData != null) {
@@ -120,7 +122,8 @@ public class IntentService extends GcmListenerService {
 			alert = data.getAsJsonPrimitive("alert").getAsString();
 		}
 
-		if (alert.isEmpty()) {
+		if (alert.isEmpty() || !data.has("alert")) {
+			showNotification = false;
 			alert = TiApplication.getInstance().getAppInfo().getName();
 		}
 
@@ -138,7 +141,7 @@ public class IntentService extends GcmListenerService {
 			BadgeUtils.setBadge(context, badge);
 		}
 
-		if (sendMessage) {
+		if (sendMessage && module != null) {
 			module.sendMessage(jsonData, appInBackground);
 		}
 
@@ -146,7 +149,7 @@ public class IntentService extends GcmListenerService {
 			Log.w(LCAT, "Show Notification: TRUE");
 
 			Intent notificationIntent = new Intent(this, PushHandlerActivity.class);
-			notificationIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+			notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 			notificationIntent.putExtra(TiGooshModule.INTENT_EXTRA, jsonData);
 
 			PendingIntent contentIntent = PendingIntent.getActivity(this, new Random().nextInt(), notificationIntent, PendingIntent.FLAG_ONE_SHOT);
@@ -392,4 +395,8 @@ public class IntentService extends GcmListenerService {
 		}
 	}
 
+	private String getCountlyId(Bundle bundle) {
+		String id = bundle.getString("c.i");
+		return "{\"c.i\": \"" + id + "\"}";
+	}
 }
