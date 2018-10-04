@@ -160,7 +160,7 @@ public class TiGooshModule extends KrollModule {
 		}catch(Exception ex){
 			return false;
 		}
-		
+
 	}
 
 	@Kroll.method
