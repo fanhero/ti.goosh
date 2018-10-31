@@ -85,10 +85,28 @@ public class IntentService extends GcmListenerService {
 	}
 
 	@TargetApi(26)
-	private NotificationChannel createOrUpdateDefaultNotificationChannel() {
+	private NotificationChannel createOrUpdateDefaultNotificationChannel(String priority) {
 		NotificationManager notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
 		String channelName = TiApplication.getInstance().getAppProperties().getString("ti.goosh.defaultChannel", DEFAULT_CHANNEL_NAME);
-		NotificationChannel channel = new NotificationChannel(DEFAULT_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_DEFAULT);
+		// https://developer.android.com/reference/android/app/NotificationManager.html#IMPORTANCE_DEFAULT
+		int importance = NotificationManager.IMPORTANCE_DEFAULT;
+		if (priority.equals("high")) {
+			importance = NotificationManager.IMPORTANCE_HIGH;
+		}
+		else if (priority.equals("low")) {
+			importance = NotificationManager.IMPORTANCE_LOW;
+		}
+		else if (priority.equals("max")) {
+			importance = NotificationManager.IMPORTANCE_MAX;
+		}
+		else if (priority.equals("min")) {
+			importance = NotificationManager.IMPORTANCE_MIN;
+		}
+		else if (priority.equals("none")) {
+			importance = NotificationManager.IMPORTANCE_NONE;
+		}
+		Log.e(LCAT, "BDUYNG1111: importance" + importance);
+		NotificationChannel channel = new NotificationChannel(DEFAULT_CHANNEL_ID, channelName, importance);
 		notificationManager.createNotificationChannel(channel);
 		return channel;
 	}
@@ -108,6 +126,9 @@ public class IntentService extends GcmListenerService {
 		// the title and alert
 		String title = bundle.getString("title", bundle.getString("message", ""));
 		String alert = bundle.getString("data", "");
+
+		// priority
+		String priority = bundle.getString("priority", "default");
 
 		// get the `data` or fallback for `custom` (OneSignal)
 
@@ -141,6 +162,10 @@ public class IntentService extends GcmListenerService {
 			alert = TiApplication.getInstance().getAppInfo().getName();
 		}
 
+		if (data != null && data.has("priority")) {
+			priority = data.getAsJsonPrimitive("priority").getAsString();
+		}
+
 		if (!appInBackground) {
 			if (data != null && data.has("force_show_in_foreground")) {
 				JsonPrimitive forceShowInForeground = data.getAsJsonPrimitive("force_show_in_foreground");
@@ -172,7 +197,7 @@ public class IntentService extends GcmListenerService {
 			NotificationCompat.Builder builder = null;
 
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-				builder = new NotificationCompat.Builder(context, createOrUpdateDefaultNotificationChannel().getId());
+				builder = new NotificationCompat.Builder(context, createOrUpdateDefaultNotificationChannel(priority).getId());
 			} else {
 				builder = new NotificationCompat.Builder(context);
 			}
