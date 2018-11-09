@@ -44,7 +44,8 @@ function payload() {
     "tag"       => "TestApp",
     "group"     => "Group x",
     "group_summary" => 1,
-    "force_show_in_foreground" => false
+    "force_show_in_foreground" => false,
+    "priority" => "max"
   ];
 }
 
