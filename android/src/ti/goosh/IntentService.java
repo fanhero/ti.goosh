@@ -61,6 +61,16 @@ public class IntentService extends GcmListenerService {
 		parseNotification(bundle);
 	}
 
+	public void handleMessage(Context context, Bundle bundle) {
+		Log.d(LCAT, "Push notification received");
+		for (String key : bundle.keySet()) {
+			Object value = bundle.get(key);
+			Log.d(LCAT, String.format("Notification key : %s => %s (%s)", key, value.toString(), value.getClass().getName()));
+		}
+
+		parseNotification(context, bundle);
+	}
+
 	private int getResource(String type, String name) {
 		int icon = 0;
 		if (name != null) {
@@ -85,36 +95,44 @@ public class IntentService extends GcmListenerService {
 	}
 
 	@TargetApi(26)
-	private NotificationChannel createOrUpdateDefaultNotificationChannel(String priority) {
-		NotificationManager notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+	private NotificationChannel createOrUpdateDefaultNotificationChannel(Context context, String priority) {
+		NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 		String channelName = TiApplication.getInstance().getAppProperties().getString("ti.goosh.defaultChannel", DEFAULT_CHANNEL_NAME);
-		// https://developer.android.com/reference/android/app/NotificationManager.html#IMPORTANCE_DEFAULT
-		int importance = NotificationManager.IMPORTANCE_DEFAULT;
-		if (priority.equals("high")) {
-			importance = NotificationManager.IMPORTANCE_HIGH;
+		int importance;
+
+		switch (priority) {
+			case "high":
+				importance = NotificationManager.IMPORTANCE_HIGH;
+				break;
+			case "low":
+				importance = NotificationManager.IMPORTANCE_LOW;
+				break;
+			case "max":
+				importance = NotificationManager.IMPORTANCE_MAX;
+				break;
+			case "min":
+				importance = NotificationManager.IMPORTANCE_MIN;
+				break;
+			case "none":
+				importance = NotificationManager.IMPORTANCE_NONE;
+				break;
+			default:
+				importance = NotificationManager.IMPORTANCE_DEFAULT;
+				break;
 		}
-		else if (priority.equals("low")) {
-			importance = NotificationManager.IMPORTANCE_LOW;
-		}
-		else if (priority.equals("max")) {
-			importance = NotificationManager.IMPORTANCE_MAX;
-		}
-		else if (priority.equals("min")) {
-			importance = NotificationManager.IMPORTANCE_MIN;
-		}
-		else if (priority.equals("none")) {
-			importance = NotificationManager.IMPORTANCE_NONE;
-		}
-		Log.e(LCAT, "BDUYNG1111: importance" + importance);
+
 		NotificationChannel channel = new NotificationChannel(DEFAULT_CHANNEL_ID, channelName, importance);
 		notificationManager.createNotificationChannel(channel);
 		return channel;
 	}
 
 	private void parseNotification(Bundle bundle) {
+		parseNotification(getApplicationContext(), bundle);
+	}
+
+	private void parseNotification(Context context, Bundle bundle) {
 		TiGooshModule module = TiGooshModule.getModule();
 
-		Context context = getApplicationContext();
 		Boolean appInBackground = !TiApplication.isCurrentActivityInForeground();
 
 		// Flag that determine if the message should be broadcasted to TiGooshModule and call the callback
@@ -155,7 +173,13 @@ public class IntentService extends GcmListenerService {
 
 		// overwrite the alert
 		if (data != null && data.has("alert")) {
-			alert = data.getAsJsonPrimitive("alert").getAsString();
+			JsonElement alertJson = data.get("alert");
+
+			if (alertJson.isJsonPrimitive()) {
+				alert = alertJson.getAsJsonPrimitive().getAsString();
+			} else {
+				Log.e(LCAT, "Error getting alert string. Most probably it's an object");
+			}
 		}
 
 		if (alert.isEmpty() || !data.has("alert")) {
@@ -187,17 +211,17 @@ public class IntentService extends GcmListenerService {
 		if (showNotification) {
 			Log.w(LCAT, "Show Notification: TRUE");
 
-			Intent notificationIntent = new Intent(this, PushHandlerActivity.class);
+			Intent notificationIntent = new Intent(context, PushHandlerActivity.class);
 			notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 			notificationIntent.putExtra(TiGooshModule.INTENT_EXTRA, jsonData);
 
-			PendingIntent contentIntent = PendingIntent.getActivity(this, new Random().nextInt(), notificationIntent, PendingIntent.FLAG_ONE_SHOT);
+			PendingIntent contentIntent = PendingIntent.getActivity(context, new Random().nextInt(), notificationIntent, PendingIntent.FLAG_ONE_SHOT);
 
 			// Start building notification
 			NotificationCompat.Builder builder = null;
 
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-				builder = new NotificationCompat.Builder(context, createOrUpdateDefaultNotificationChannel(priority).getId());
+				builder = new NotificationCompat.Builder(context, createOrUpdateDefaultNotificationChannel(context, priority).getId());
 			} else {
 				builder = new NotificationCompat.Builder(context);
 			}
@@ -427,13 +451,18 @@ public class IntentService extends GcmListenerService {
 			if (data != null && data.has("id")) {
 				// ensure that the id sent from the server is negative to prevent
 				// collision with the atomic integer
-				id = -1 * Math.abs(data.getAsJsonPrimitive("id").getAsInt());
-			} else {
+				JsonElement idJson = data.get("id");
+				if (idJson.isJsonPrimitive() && idJson.getAsJsonPrimitive().isNumber()) {
+					id = -1 * Math.abs(idJson.getAsJsonPrimitive().getAsInt());
+				}
+			}
+
+			if (id == 0) {
 				id = atomic.getAndIncrement();
 			}
 
 			// Send
-			NotificationManager notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+			NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 			notificationManager.notify(tag, id, builder.build());
 		} else {
 			Log.w(LCAT, "Show Notification: FALSE");
